@@ -1,6 +1,6 @@
 """
 Чат API: отправка и получение сообщений между пользователями.
-POST / — отправить сообщение
+POST / — отправить сообщение (text и/или media_url + media_type)
 GET  /?from_id=XXX&to_id=YYY&since=<timestamp_ms> — получить сообщения
 """
 
@@ -41,12 +41,17 @@ def send_message(event: dict) -> dict:
     except Exception:
         return {"statusCode": 400, "headers": CORS, "body": json.dumps({"error": "Invalid JSON"})}
 
-    from_id = (body.get("from_id") or "").strip()
-    to_id   = (body.get("to_id") or "").strip()
-    text    = (body.get("text") or "").strip()
+    from_id    = (body.get("from_id") or "").strip()
+    to_id      = (body.get("to_id") or "").strip()
+    text       = (body.get("text") or "").strip()
+    media_url  = (body.get("media_url") or "").strip() or None
+    media_type = (body.get("media_type") or "").strip() or None
 
-    if not from_id or not to_id or not text:
-        return {"statusCode": 400, "headers": CORS, "body": json.dumps({"error": "from_id, to_id and text required"})}
+    if not from_id or not to_id:
+        return {"statusCode": 400, "headers": CORS, "body": json.dumps({"error": "from_id and to_id required"})}
+
+    if not text and not media_url:
+        return {"statusCode": 400, "headers": CORS, "body": json.dumps({"error": "text or media_url required"})}
 
     if len(text) > 4000:
         return {"statusCode": 400, "headers": CORS, "body": json.dumps({"error": "Message too long"})}
@@ -55,8 +60,10 @@ def send_message(event: dict) -> dict:
     try:
         cur = conn.cursor()
         cur.execute(
-            f"INSERT INTO {SCHEMA}.messages (from_id, to_id, text) VALUES (%s, %s, %s) RETURNING id, created_at",
-            (from_id, to_id, text)
+            f"""INSERT INTO {SCHEMA}.messages (from_id, to_id, text, media_url, media_type)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id, created_at""",
+            (from_id, to_id, text or None, media_url, media_type)
         )
         row = cur.fetchone()
         conn.commit()
@@ -74,8 +81,8 @@ def send_message(event: dict) -> dict:
 
 def get_messages(event: dict) -> dict:
     params = event.get("queryStringParameters") or {}
-    from_id = (params.get("from_id") or "").strip()
-    to_id   = (params.get("to_id") or "").strip()
+    from_id  = (params.get("from_id") or "").strip()
+    to_id    = (params.get("to_id") or "").strip()
     since_ms = int(params.get("since") or "0")
 
     if not from_id or not to_id:
@@ -87,7 +94,8 @@ def get_messages(event: dict) -> dict:
         cur.execute(
             f"""
             SELECT id, from_id, to_id, text,
-                   EXTRACT(EPOCH FROM created_at)::BIGINT * 1000 AS ts_ms
+                   EXTRACT(EPOCH FROM created_at)::BIGINT * 1000 AS ts_ms,
+                   media_url, media_type
             FROM {SCHEMA}.messages
             WHERE LEAST(from_id, to_id) = LEAST(%s, %s)
               AND GREATEST(from_id, to_id) = GREATEST(%s, %s)
@@ -99,7 +107,11 @@ def get_messages(event: dict) -> dict:
         )
         rows = cur.fetchall()
         messages = [
-            {"id": r[0], "from_id": r[1], "to_id": r[2], "text": r[3], "ts": r[4]}
+            {
+                "id": r[0], "from_id": r[1], "to_id": r[2],
+                "text": r[3], "ts": r[4],
+                "media_url": r[5], "media_type": r[6]
+            }
             for r in rows
         ]
         return {

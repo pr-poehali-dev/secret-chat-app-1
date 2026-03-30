@@ -1,0 +1,19 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS preflight",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200,
+      "bodyMatcher": "any"
+    },
+    {
+      "name": "Reject unsupported type",
+      "method": "POST",
+      "path": "/",
+      "body": {"filename": "file.txt", "content_type": "text/plain", "data": "aGVsbG8="},
+      "expectedStatus": 400,
+      "bodyMatcher": "any"
+    }
+  ]
+}
