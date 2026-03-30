@@ -1,0 +1,19 @@
+{
+  "tests": [
+    {
+      "name": "Send message",
+      "method": "POST",
+      "path": "/",
+      "body": {"from_id": "111-111-111", "to_id": "222-222-222", "text": "Привет!"},
+      "expectedStatus": 200,
+      "bodyMatcher": "any"
+    },
+    {
+      "name": "Get messages",
+      "method": "GET",
+      "path": "/?from_id=111-111-111&to_id=222-222-222&since=0",
+      "expectedStatus": 200,
+      "bodyMatcher": "any"
+    }
+  ]
+}
